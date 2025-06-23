@@ -22,16 +22,21 @@ import urllib.parse
 def to_aware(dt):
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
-
 def to_naive(dt):
     if dt.tzinfo is not None:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
 
 
+
 # Load environment variables
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/product_db")
+
+# FIX 1: CORRECT DATABASE URL FOR RAILWAY
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 
 # Database connection
 metadata = MetaData()
@@ -417,7 +422,7 @@ async def list_products(
     return products
 
 
-def fix_invalid_url(self, url):
+def fix_invalid_url(url):
     """Attempt to fix invalid URLs"""
     # If it looks like a URL fragment, try to reconstruct
     if url.startswith("%20") or url.startswith("/"):

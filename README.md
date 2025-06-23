@@ -30,28 +30,58 @@ Tech Stack
 
 Setup
 -----
+
+## Local Development
+
 1. Clone the project
-```
+```bash
 git clone https://github.com/yourname/product-management-api.git
 cd product-management-api
 ```
 
 2. Install dependencies
-```
+```bash
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Configure `.env`
-```
-DATABASE_URL=postgresql://postgres:yourpassword@localhost/product_db
+3. Configure environment variables
+```bash
+cp .env.example .env
+# Edit .env with your database credentials
 ```
 
 4. Run the server
+```bash
+uvicorn product_management:app --reload
 ```
-uvicorn product-management:app --reload
-```
+
+## Railway Deployment
+
+This project is configured for Railway deployment with:
+
+- **Procfile**: Configured for Railway's web service
+- **PostgreSQL**: Uses Railway's managed PostgreSQL service
+- **Environment Variables**: Automatically configured via Railway
+
+### Deploy to Railway:
+
+1. **Connect GitHub Repository**
+   - Go to [Railway](https://railway.app)
+   - Create new project from GitHub repo
+
+2. **Add PostgreSQL Database**
+   - Add PostgreSQL service to your project
+   - Railway will automatically set `DATABASE_URL`
+
+3. **Deploy**
+   - Railway automatically deploys on git push
+   - Access your API at the provided Railway URL
+
+### Environment Variables in Railway:
+- `DATABASE_URL` - Automatically set by Railway PostgreSQL service
+- Add any custom variables in Railway dashboard
 
 API Endpoints
 -------------
