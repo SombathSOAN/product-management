@@ -31,7 +31,7 @@ def to_naive(dt):
 
 # Load environment variables
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/product_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:OoPOlzJfLMJpYCkXqvvfpNHDuoObQzWC@postgres.railway.internal:5432/railway")
 
 # FIX 1: CORRECT DATABASE URL FOR RAILWAY
 if DATABASE_URL.startswith("postgres://"):
@@ -403,7 +403,7 @@ async def list_products(
                         fixed_urls.append(url)
                     except:
                         # Try to fix URL encoding
-                        fixed_url = self.fix_invalid_url(url)
+                        fixed_url = fix_invalid_url(url)
                         fixed_urls.append(fixed_url)
                 row_data["gallery_urls"] = fixed_urls
 
@@ -412,7 +412,7 @@ async def list_products(
                 try:
                     HttpUrl(row_data["thumbnail_url"])
                 except:
-                    row_data["thumbnail_url"] = self.fix_invalid_url(row_data["thumbnail_url"])
+                    row_data["thumbnail_url"] = fix_invalid_url(row_data["thumbnail_url"])
 
             products.append(Product(**row_data))
         except Exception as e:
@@ -595,9 +595,9 @@ async def import_products_excel(file: UploadFile = File(...)):
                 "price": float(row.get("Price", 0)),
                 "unit": row.get("Unit", ""),
                 "tags": row.get("Tags", "").split(",") if row.get("Tags") else [],
-                "thumbnail_url": self.fix_invalid_url(row.get("Thumbnail URL", "")),
+                "thumbnail_url": fix_invalid_url(row.get("Thumbnail URL", "")),
                 # Always treat as single URL in list
-                "gallery_urls": [self.fix_invalid_url(row.get("Gallery URLs", ""))] if row.get("Gallery URLs") else [],
+                "gallery_urls": [fix_invalid_url(row.get("Gallery URLs", ""))] if row.get("Gallery URLs") else [],
                 "quantity": int(row.get("Quantity", 0)),
                 "stock_visibility": row.get("Stock Visibility", "show_quantity"),
                 "display_price": bool(row.get("Display Price", True)),
@@ -663,7 +663,7 @@ async def fix_all_products():
                 try:
                     HttpUrl(product["thumbnail_url"])
                 except:
-                    fixed_url = self.fix_invalid_url(product["thumbnail_url"])
+                    fixed_url = fix_invalid_url(product["thumbnail_url"])
                     if fixed_url != product["thumbnail_url"]:
                         product["thumbnail_url"] = fixed_url
                         needs_update = True
@@ -677,7 +677,7 @@ async def fix_all_products():
                         HttpUrl(url)
                         fixed_urls.append(url)
                     except:
-                        fixed_url = self.fix_invalid_url(url)
+                        fixed_url = fix_invalid_url(url)
                         fixed_urls.append(fixed_url)
                         changed = True
 
@@ -690,7 +690,7 @@ async def fix_all_products():
                 try:
                     HttpUrl(product["meta_image"])
                 except:
-                    fixed_url = self.fix_invalid_url(product["meta_image"])
+                    fixed_url = fix_invalid_url(product["meta_image"])
                     if fixed_url != product["meta_image"]:
                         product["meta_image"] = fixed_url
                         needs_update = True
@@ -738,7 +738,7 @@ async def fix_invalid_gallery_urls():
                 continue
 
             # Parse using our method
-            parsed_urls = self.parse_gallery_urls(gallery_urls)
+            parsed_urls = gallery_urls if isinstance(gallery_urls, list) else [gallery_urls]
 
             # Validate each URL
             valid_urls = []
@@ -773,29 +773,6 @@ async def fix_invalid_gallery_urls():
     }
 
 
-# Add table migration logic on startup
-@app.on_event("startup")
-async def startup():
-    await database.connect()
-
-    # Add new column if it doesn't exist
-    with engine.connect() as connection:
-        # Check if display_price column exists
-        result = connection.execute(
-            sqlalchemy.text(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'products' AND column_name = 'display_price')"
-            )
-        ).scalar()
-
-        if not result:
-            # Add the column with default value
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE"
-                )
-            )
-            connection.commit()
 
 
 # API: Create Banner
