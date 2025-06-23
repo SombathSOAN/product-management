@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-healthcheckPath = "/docs"
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
@@ -12,7 +12,7 @@ name = "web"
 source = "."
 
 [services.web]
-startCommand = "uvicorn product_management:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
 
 [[services]]
 name = "postgres"

@@ -109,9 +109,14 @@ user_location_table = Table(
 )
 
 
-metadata.create_all(engine)
+# Remove immediate table creation - will be done in startup event
+# metadata.create_all(engine)
 
-app = FastAPI()
+app = FastAPI(
+    title="Product Management API",
+    description="API for managing products, banners, and user locations",
+    version="1.0.0"
+)
 
 # Enable CORS for frontend access
 app.add_middleware(
@@ -121,6 +126,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Health check endpoint for Railway
+@app.get("/")
+async def root():
+    return {"message": "Product Management API is running", "status": "healthy"}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "product-management-api"}
 
 
 @app.on_event("startup")
