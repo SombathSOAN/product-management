@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
 """
 Main entry point for the FastAPI application.
-This file ensures proper module import regardless of how Railway interprets the project structure.
+Direct import to avoid Railway auto-detection issues.
 """
 
-import sys
-import os
+# Direct import from product_management module
+from product_management import app
 
-# Add current directory to Python path to ensure imports work
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from product_management import app
-except ImportError as e:
-    print(f"Import error: {e}")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Python path: {sys.path}")
-    print(f"Files in current directory: {os.listdir('.')}")
-    raise
+# Export app for uvicorn
+__all__ = ["app"]
 
 if __name__ == "__main__":
     import uvicorn
