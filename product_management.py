@@ -1,5 +1,7 @@
-### Version 9, Fix Upload or Bulk Imprt Product xlsx
+### Version 10, Enhance Search Product with Image APIs
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+import PIL.Image as Image
+import io
 import pandas as pd
 import io
 from fastapi.middleware.cors import CORSMiddleware
@@ -372,7 +374,6 @@ async def search_products(q: str = Query(..., min_length=1)):
         )
     )
 
-    # Fixed: Added published=True filter
     search_query = data_table.select().where(
         and_(
             data_table.c.published == True,
@@ -383,7 +384,58 @@ async def search_products(q: str = Query(..., min_length=1)):
         )
     )
     rows = await database.fetch_all(search_query)
-    return [Product(**dict(row)) for row in rows]
+
+    products = []
+    for row in rows:
+        try:
+            row_data = dict(row)
+
+            # Fix gallery URLs
+            if row_data.get("gallery_urls"):
+                fixed_urls = []
+                for url in row_data["gallery_urls"]:
+                    try:
+                        HttpUrl(url)
+                        fixed_urls.append(url)
+                    except:
+                        fixed_urls.append(fix_invalid_url(url))
+                row_data["gallery_urls"] = fixed_urls
+
+            # Fix thumbnail URL
+            if row_data.get("thumbnail_url"):
+                try:
+                    HttpUrl(row_data["thumbnail_url"])
+                except:
+                    row_data["thumbnail_url"] = fix_invalid_url(row_data["thumbnail_url"])
+
+            products.append(Product(**row_data))
+        except Exception as e:
+            print(f"Error processing product {row['id']}: {str(e)}")
+            continue
+
+    return products
+
+# API: Search Products by Image
+@app.post("/products/search-by-image", response_model=List[Product])
+async def search_products_by_image(file: UploadFile = File(...)):
+    import PIL.Image as Image
+    import io
+    contents = await file.read()
+    image_stream = io.BytesIO(contents)
+    uploaded_image = Image.open(image_stream)
+    
+    # Placeholder: Compare uploaded image to product thumbnails
+    query = data_table.select().where(data_table.c.thumbnail_url != None)
+    rows = await database.fetch_all(query)
+    
+    products = []
+    for row in rows:
+        try:
+            products.append(Product(**dict(row)))
+        except Exception as e:
+            print(f"Error processing product: {str(e)}")
+            continue
+    return products
 
 
 # API: List Products with Pagination
@@ -556,7 +608,10 @@ async def log_search_click(log: SearchLog):
 
 # API: Get Search Suggestions
 @app.get("/products/search/suggestions", response_model=List[str])
-async def suggest_search_keywords(q: str = Query(..., min_length=1), limit: int = 10):
+async def suggest_search_keywords(q: Optional[str] = Query(None), limit: int = 10):
+    if not q:
+        return []
+
     query = (
         sqlalchemy.select(search_log_table.c.query_text, func.count().label("count"))
         .group_by(search_log_table.c.query_text)
@@ -565,6 +620,19 @@ async def suggest_search_keywords(q: str = Query(..., min_length=1), limit: int 
     )
     rows = await database.fetch_all(query)
     return [row["query_text"] for row in rows if q.upper() in row["query_text"].upper()][:limit]
+
+
+# API: Get Trending Search Keywords
+@app.get("/products/search/trending", response_model=List[str])
+async def trending_search_keywords(limit: int = 10):
+    query = (
+        sqlalchemy.select(search_log_table.c.query_text, func.count().label("count"))
+        .group_by(search_log_table.c.query_text)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    rows = await database.fetch_all(query)
+    return [row["query_text"] for row in rows]
 
 
 # API: Import Products from Excel/CSV
