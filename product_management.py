@@ -415,27 +415,42 @@ async def search_products(q: str = Query(..., min_length=1)):
 
     return products
 
-# API: Search Products by Image
+# API: Search Products by Image with basic similarity check
 @app.post("/products/search-by-image", response_model=List[Product])
 async def search_products_by_image(file: UploadFile = File(...)):
-    import PIL.Image as Image
+    import PIL.Image as PILImage
     import io
+    import imagehash  # Requires imagehash library; ensure it's in requirements.txt
+    import requests  # For fetching images from URLs
+    
     contents = await file.read()
     image_stream = io.BytesIO(contents)
-    uploaded_image = Image.open(image_stream)
+    uploaded_image = PILImage.open(image_stream)
+    uploaded_hash = imagehash.phash(uploaded_image)  # Compute perceptual hash
     
-    # Placeholder: Compare uploaded image to product thumbnails
     query = data_table.select().where(data_table.c.thumbnail_url != None)
     rows = await database.fetch_all(query)
     
-    products = []
+    similar_products = []
+    threshold = 15  # Hamming distance for similarity (adjust as needed)
+    
     for row in rows:
         try:
-            products.append(Product(**dict(row)))
+            product = dict(row)
+            if product.get("thumbnail_url"):
+                response = requests.get(product["thumbnail_url"])
+                response.raise_for_status()  # Ensure the request was successful
+                imported_image_stream = io.BytesIO(response.content)
+                imported_image = PILImage.open(imported_image_stream)
+                imported_hash = imagehash.phash(imported_image)
+                
+                if abs(uploaded_hash - imported_hash) < threshold:  # Check similarity
+                    similar_products.append(Product(**product))
         except Exception as e:
-            print(f"Error processing product: {str(e)}")
+            print(f"Error processing product image: {str(e)}")
             continue
-    return products
+    
+    return similar_products  # Return only similar products
 
 
 # API: List Products with Pagination
