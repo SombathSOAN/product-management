@@ -1265,3 +1265,4 @@ async def delete_review(review_id: str):
     await update_product_review_stats(review["product_id"])
     
     return {"message": "Review deleted successfully"}
+
