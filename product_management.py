@@ -20,6 +20,10 @@ import re
 import urllib.parse
 import aiohttp  # Using aiohttp instead of requests for async
 from io import BytesIO
+import pytesseract
+from PIL import Image as PILImage
+
+
 
 
 # Timezone utility functions
@@ -484,7 +488,7 @@ async def search_products(q: str = Query(..., min_length=1)):
             continue
     return products
 
-# FIXED API: Search Products by Image with optimized matching
+# Enhanced API: Search Products by Image with OCR and image matching
 @app.post("/products/search-by-image", response_model=List[Product])
 async def search_products_by_image(file: UploadFile = File(...)):
     try:
@@ -507,18 +511,26 @@ async def search_products_by_image(file: UploadFile = File(...)):
         image_stream = BytesIO(contents)
         try:
             uploaded_image = PILImage.open(image_stream)
-            # Convert to RGB and resize for consistent processing
+            # Convert to RGB for consistent processing
             if uploaded_image.mode != 'RGB':
                 uploaded_image = uploaded_image.convert('RGB')
-                
-            # Resize to standard size for better matching
-            uploaded_image = uploaded_image.resize((300, 300))
         except UnidentifiedImageError:
             return []
         
         # Generate hash for uploaded image
         uploaded_hash = imagehash.phash(uploaded_image)
         print(f"DEBUG: Uploaded image hash: {uploaded_hash}")
+        
+        # OCR: Extract text from image
+        ocr_text = pytesseract.image_to_string(uploaded_image)
+        print(f"OCR extracted text: {ocr_text}")
+        
+        # Clean and tokenize OCR text
+        clean_text = re.sub(r'[^\w\s]', '', ocr_text).lower()
+        keywords = clean_text.split()
+        keywords = [word for word in keywords if len(word) > 2]  # Remove short words
+        print(f"Keywords extracted: {keywords}")
+        
     except Exception as e:
         print(f"ERROR: Failed to process uploaded image - {str(e)}")
         return []
@@ -530,10 +542,8 @@ async def search_products_by_image(file: UploadFile = File(...)):
     if not rows:
         return []
     
-    similar_products = []
-    threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 30))  # Increased default threshold
-    
-    print(f"Comparing against {len(rows)} products with threshold {threshold}")
+    matched_products = []
+    threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 25))  # Balanced threshold
     
     # Use a single HTTP session for all requests
     async with aiohttp.ClientSession() as session:
@@ -560,34 +570,47 @@ async def search_products_by_image(file: UploadFile = File(...)):
                             # Preprocess product image
                             if imported_image.mode != 'RGB':
                                 imported_image = imported_image.convert('RGB')
-                            imported_image = imported_image.resize((300, 300))
                         except UnidentifiedImageError:
                             continue
                             
                         imported_hash = imagehash.phash(imported_image)
                         distance = abs(uploaded_hash - imported_hash)
                         
-                        # Add all products within threshold
-                        if distance <= threshold:
-                            print(f"Match found! Product: {product['name']} (ID: {product['id']}), Distance: {distance}")
-                            similar_products.append({
+                        # Calculate text match score
+                        text_match_score = 0
+                        product_text = f"{product['name']} {' '.join(product.get('tags', []))}".lower()
+                        for keyword in keywords:
+                            if keyword in product_text:
+                                text_match_score += 1
+                        
+                        # Weighted scoring system
+                        image_score = max(0, (threshold - distance) / threshold)  # Normalize 0-1
+                        text_score = min(1, text_match_score / 5)  # Cap at 1.0
+                        combined_score = (image_score * 0.6) + (text_score * 0.4)
+                        
+                        if distance <= threshold or text_match_score > 0:
+                            matched_products.append({
                                 "product": Product(**product),
-                                "distance": distance
+                                "distance": distance,
+                                "text_score": text_match_score,
+                                "combined_score": combined_score
                             })
+                            print(f"Match candidate: {product['name']} - "
+                                  f"Distance: {distance}, Text matches: {text_match_score}, "
+                                  f"Combined score: {combined_score:.2f}")
                 except Exception as e:
                     continue
             except Exception as e:
                 continue
     
-    # Sort by distance (lowest distance = best match)
-    similar_products.sort(key=lambda x: x["distance"])
+    # Sort by combined score (highest first)
+    matched_products.sort(key=lambda x: x["combined_score"], reverse=True)
     
     # Log final matches
-    print(f"Found {len(similar_products)} similar products within threshold")
+    print(f"Found {len(matched_products)} candidate products")
     
-    # Return top 10 matches or all if less than 10
-    max_results = min(10, len(similar_products))
-    return [item["product"] for item in similar_products[:max_results]]
+    # Return top 10 matches
+    return [item["product"] for item in matched_products[:10]]
 
 # # FIXED API: Search Products by Image with enhanced logging
 # @app.post("/products/search-by-image", response_model=List[Product])
