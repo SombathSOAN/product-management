@@ -533,7 +533,7 @@ async def search_products_by_image(file: UploadFile = File(...)):
                 
             if pytesseract:
                 try:
-                    ocr_text = pytesseract.image_to_string(uploaded_image, lang='eng+khm', config='--psm 6')  # Use PSM 6 for assuming a single uniform block of text to improve accuracy
+                    ocr_text = pytesseract.image_to_string(uploaded_image, lang='eng+khm+th', config='--psm 6')  # Use PSM 6 for assuming a single uniform block of text to improve accuracy
                     print(f"OCR extracted text: {ocr_text}")
                     
                     # Clean and tokenize OCR text
