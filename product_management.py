@@ -513,7 +513,7 @@ async def search_products_by_image(file: UploadFile = File(...)):
             uploaded_image = PILImage.open(image_stream)
             # Convert to RGB for consistent processing
             if uploaded_image.mode != 'RGB':
-                uploaded_image = uploaded_image.convert('RGB')
+                uploaded_image = uploaded_image.convert('L')  # Convert to grayscale for better OCR accuracy with Khmer text
         except UnidentifiedImageError:
             return []
         
@@ -533,7 +533,7 @@ async def search_products_by_image(file: UploadFile = File(...)):
                 
             if pytesseract:
                 try:
-                    ocr_text = pytesseract.image_to_string(uploaded_image)
+                    ocr_text = pytesseract.image_to_string(uploaded_image, lang='eng+khm', config='--psm 6')  # Use PSM 6 for assuming a single uniform block of text to improve accuracy
                     print(f"OCR extracted text: {ocr_text}")
                     
                     # Clean and tokenize OCR text
