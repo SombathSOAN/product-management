@@ -31,3 +31,5 @@ tzdata==2025.2
 uvicorn==0.34.3
 
 Pillow==11.2.1
+
+imagehash==4.3.1
