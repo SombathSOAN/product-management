@@ -1,4 +1,4 @@
-### Version 11, Product Management API with Review System
+### Version 11.1, Fixed Image Search
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 import PIL.Image as Image
 import io
@@ -18,6 +18,8 @@ from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Table,
 from sqlalchemy.dialects.postgresql import ARRAY
 import re
 import urllib.parse
+import aiohttp  # Using aiohttp instead of requests for async
+from io import BytesIO
 
 
 # Timezone utility functions
@@ -126,7 +128,7 @@ review_table = Table(
 app = FastAPI(
     title="Product Management API",
     description="API for managing products, banners, user locations, and reviews",
-    version="1.1.0"
+    version="1.1.1"  # Updated version
 )
 
 # Enable CORS for frontend access
@@ -482,35 +484,65 @@ async def search_products(q: str = Query(..., min_length=1)):
             continue
     return products
 
-# API: Search Products by Image
+# FIXED API: Search Products by Image
 @app.post("/products/search-by-image", response_model=List[Product])
 async def search_products_by_image(file: UploadFile = File(...)):
-    import PIL.Image as PILImage
-    import io
-    import imagehash
-    import requests
+    try:
+        # Import inside function to avoid startup issues if not installed
+        import imagehash
+        from PIL import Image as PILImage
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Image processing libraries not installed. Install pillow and imagehash."
+        )
+
+    # Read uploaded image
     contents = await file.read()
-    image_stream = io.BytesIO(contents)
-    uploaded_image = PILImage.open(image_stream)
-    uploaded_hash = imagehash.phash(uploaded_image)
+    image_stream = BytesIO(contents)
+    
+    try:
+        uploaded_image = PILImage.open(image_stream)
+        uploaded_hash = imagehash.phash(uploaded_image)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error processing uploaded image: {str(e)}"
+        )
+
+    # Get all products with thumbnails
     query = data_table.select().where(data_table.c.thumbnail_url != None)
     rows = await database.fetch_all(query)
+    
     similar_products = []
-    threshold = 15
-    for row in rows:
-        try:
-            product = dict(row)
-            if product.get("thumbnail_url"):
-                response = requests.get(product["thumbnail_url"])
-                response.raise_for_status()
-                imported_image_stream = io.BytesIO(response.content)
-                imported_image = PILImage.open(imported_image_stream)
-                imported_hash = imagehash.phash(imported_image)
-                if abs(uploaded_hash - imported_hash) < threshold:
-                    similar_products.append(Product(**product))
-        except Exception as e:
-            print(f"Error processing product image: {str(e)}")
-            continue
+    threshold = 15  # Hamming distance for similarity
+    
+    # Use a single HTTP session for all requests
+    async with aiohttp.ClientSession() as session:
+        for row in rows:
+            try:
+                product = dict(row)
+                thumbnail_url = product.get("thumbnail_url")
+                
+                if thumbnail_url:
+                    # Fetch product image
+                    try:
+                        async with session.get(thumbnail_url, timeout=10) as response:
+                            if response.status == 200:
+                                img_data = await response.read()
+                                imported_image = PILImage.open(BytesIO(img_data))
+                                imported_hash = imagehash.phash(imported_image)
+                                
+                                # Compare image hashes
+                                if abs(uploaded_hash - imported_hash) < threshold:
+                                    similar_products.append(Product(**product))
+                    except Exception as e:
+                        print(f"Error fetching image for product {product['id']}: {str(e)}")
+                        continue
+            except Exception as e:
+                print(f"Error processing product: {str(e)}")
+                continue
+    
     return similar_products
 
 # API: List Products
