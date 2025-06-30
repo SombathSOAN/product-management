@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set a local database URL for testing
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+os.environ["DATABASE_URL"] = "postgresql://postgres:OoPOlzJfLMJpYCkXqvvfpNHDuoObQzWC@postgres.railway.internal:5432/railway"
 
 try:
     from main import app
@@ -60,3 +60,19 @@ except ImportError as e:
     print(f"❌ Import error: {e}")
 except Exception as e:
     print(f"❌ Unexpected error: {e}")
+
+    # Test search by image endpoint
+    print("\n4. Testing /products/search-by-image endpoint...")
+    try:
+        with open("test_image.jpg", "rb") as image_file:  # Ensure you have a test image in the directory
+            response = client.post("/products/search-by-image", files={"file": ("test_image.jpg", image_file, "image/jpeg")})
+            print(f"   Status Code: {response.status_code}")
+            if response.status_code == 200:
+                results = response.json()
+                print(f"   Found {len(results)} similar products")
+            else:
+                print(f"   Response: {response.json()}")
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+
+    print("\n✅ Local API test completed!")
