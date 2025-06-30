@@ -521,15 +521,31 @@ async def search_products_by_image(file: UploadFile = File(...)):
         uploaded_hash = imagehash.phash(uploaded_image)
         print(f"DEBUG: Uploaded image hash: {uploaded_hash}")
         
-        # OCR: Extract text from image
-        ocr_text = pytesseract.image_to_string(uploaded_image)
-        print(f"OCR extracted text: {ocr_text}")
+        # OCR: Extract text from image with error handling
+        keywords = []
+        try:
+            # Check if pytesseract is available
+            try:
+                import pytesseract
+            except ImportError:
+                print("WARNING: pytesseract not installed. Skipping OCR.")
+                pytesseract = None
+                
+            if pytesseract:
+                try:
+                    ocr_text = pytesseract.image_to_string(uploaded_image)
+                    print(f"OCR extracted text: {ocr_text}")
+                    
+                    # Clean and tokenize OCR text
+                    clean_text = re.sub(r'[^\w\s]', '', ocr_text).lower()
+                    keywords = clean_text.split()
+                    keywords = [word for word in keywords if len(word) > 2]  # Remove short words
+                    print(f"Keywords extracted: {keywords}")
+                except Exception as e:
+                    print(f"ERROR: OCR processing failed - {str(e)}")
         
-        # Clean and tokenize OCR text
-        clean_text = re.sub(r'[^\w\s]', '', ocr_text).lower()
-        keywords = clean_text.split()
-        keywords = [word for word in keywords if len(word) > 2]  # Remove short words
-        print(f"Keywords extracted: {keywords}")
+        except Exception as e:
+            print(f"ERROR: OCR setup failed - {str(e)}")
         
     except Exception as e:
         print(f"ERROR: Failed to process uploaded image - {str(e)}")
@@ -578,16 +594,18 @@ async def search_products_by_image(file: UploadFile = File(...)):
                         
                         # Calculate text match score
                         text_match_score = 0
-                        product_text = f"{product['name']} {' '.join(product.get('tags', []))}".lower()
-                        for keyword in keywords:
-                            if keyword in product_text:
-                                text_match_score += 1
+                        if keywords:  # Only do text matching if we have keywords
+                            product_text = f"{product['name']} {' '.join(product.get('tags', []))}".lower()
+                            for keyword in keywords:
+                                if keyword in product_text:
+                                    text_match_score += 1
                         
                         # Weighted scoring system
                         image_score = max(0, (threshold - distance) / threshold)  # Normalize 0-1
                         text_score = min(1, text_match_score / 5)  # Cap at 1.0
                         combined_score = (image_score * 0.6) + (text_score * 0.4)
                         
+                        # Always include some matches, but prioritize good matches
                         if distance <= threshold or text_match_score > 0:
                             matched_products.append({
                                 "product": Product(**product),
@@ -599,8 +617,10 @@ async def search_products_by_image(file: UploadFile = File(...)):
                                   f"Distance: {distance}, Text matches: {text_match_score}, "
                                   f"Combined score: {combined_score:.2f}")
                 except Exception as e:
+                    print(f"ERROR processing product image {product['id']}: {str(e)}")
                     continue
             except Exception as e:
+                print(f"ERROR processing product {row.get('id')}: {str(e)}")
                 continue
     
     # Sort by combined score (highest first)
