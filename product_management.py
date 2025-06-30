@@ -484,98 +484,203 @@ async def search_products(q: str = Query(..., min_length=1)):
             continue
     return products
 
-# FIXED API: Search Products by Image with enhanced logging
+# FIXED API: Search Products by Image with optimized matching
 @app.post("/products/search-by-image", response_model=List[Product])
 async def search_products_by_image(file: UploadFile = File(...)):
-    # Check if required libraries are installed
     try:
         import imagehash
         from PIL import Image as PILImage
         from PIL import UnidentifiedImageError
     except ImportError as e:
-        print(f"Missing required libraries: {str(e)}")
+        print(f"CRITICAL: Required libraries missing - {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="Image processing libraries not installed. Install with: pip install pillow imagehash"
         )
-
-    # Read and validate uploaded image
+    
+    # Read uploaded image
     try:
         contents = await file.read()
         if not contents:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty")
-        
+            return []
+            
         image_stream = BytesIO(contents)
         try:
             uploaded_image = PILImage.open(image_stream)
-            # Convert to RGB if necessary
+            # Convert to RGB and resize for consistent processing
             if uploaded_image.mode != 'RGB':
                 uploaded_image = uploaded_image.convert('RGB')
+                
+            # Resize to standard size for better matching
+            uploaded_image = uploaded_image.resize((300, 300))
         except UnidentifiedImageError:
-            raise HTTPException(status_code=400, detail="Unsupported image format")
+            return []
         
+        # Generate hash for uploaded image
         uploaded_hash = imagehash.phash(uploaded_image)
-        print(f"Uploaded image hash: {uploaded_hash}")
+        print(f"DEBUG: Uploaded image hash: {uploaded_hash}")
     except Exception as e:
-        print(f"Error processing uploaded image: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error processing uploaded image: {str(e)}"
-        )
+        print(f"ERROR: Failed to process uploaded image - {str(e)}")
+        return []
 
     # Get all products with thumbnails
     query = data_table.select().where(data_table.c.thumbnail_url != None)
     rows = await database.fetch_all(query)
     
+    if not rows:
+        return []
+    
     similar_products = []
-    threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 15))  # Configurable threshold
+    threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 30))  # Increased default threshold
     
     print(f"Comparing against {len(rows)} products with threshold {threshold}")
     
     # Use a single HTTP session for all requests
     async with aiohttp.ClientSession() as session:
-        for i, row in enumerate(rows):
-            product = dict(row)
-            thumbnail_url = fix_invalid_url(product.get("thumbnail_url"))
-            
-            if not thumbnail_url:
-                print(f"Skipping product {product['id']} - no thumbnail URL")
-                continue
-                
+        for row in rows:
             try:
+                product = dict(row)
+                thumbnail_url = fix_invalid_url(product.get("thumbnail_url"))
+                
+                if not thumbnail_url:
+                    continue
+                    
                 # Fetch product image
-                async with session.get(thumbnail_url, timeout=10) as response:
-                    if response.status != 200:
-                        print(f"Failed to fetch {thumbnail_url}: HTTP {response.status}")
-                        continue
+                try:
+                    async with session.get(thumbnail_url, timeout=10) as response:
+                        if response.status != 200:
+                            continue
+                            
+                        img_data = await response.read()
+                        if not img_data:
+                            continue
+                            
+                        try:
+                            imported_image = PILImage.open(BytesIO(img_data))
+                            # Preprocess product image
+                            if imported_image.mode != 'RGB':
+                                imported_image = imported_image.convert('RGB')
+                            imported_image = imported_image.resize((300, 300))
+                        except UnidentifiedImageError:
+                            continue
+                            
+                        imported_hash = imagehash.phash(imported_image)
+                        distance = abs(uploaded_hash - imported_hash)
                         
-                    img_data = await response.read()
-                    if not img_data:
-                        print(f"Empty image data for {thumbnail_url}")
-                        continue
-                        
-                    try:
-                        imported_image = PILImage.open(BytesIO(img_data))
-                        # Convert to RGB if necessary
-                        if imported_image.mode != 'RGB':
-                            imported_image = imported_image.convert('RGB')
-                    except UnidentifiedImageError:
-                        print(f"Unsupported image format for {thumbnail_url}")
-                        continue
-                        
-                    imported_hash = imagehash.phash(imported_image)
-                    distance = abs(uploaded_hash - imported_hash)
-                    
-                    print(f"Product {product['id']} - Distance: {distance}, Hash: {imported_hash}")
-                    
-                    if distance <= threshold:
-                        print(f"Match found! Product: {product['name']} (ID: {product['id']}), Distance: {distance}")
-                        similar_products.append(Product(**product))
+                        # Add all products within threshold
+                        if distance <= threshold:
+                            print(f"Match found! Product: {product['name']} (ID: {product['id']}), Distance: {distance}")
+                            similar_products.append({
+                                "product": Product(**product),
+                                "distance": distance
+                            })
+                except Exception as e:
+                    continue
             except Exception as e:
-                print(f"Error processing product {product['id']}: {str(e)}")
+                continue
     
-    print(f"Found {len(similar_products)} similar products")
-    return similar_products
+    # Sort by distance (lowest distance = best match)
+    similar_products.sort(key=lambda x: x["distance"])
+    
+    # Log final matches
+    print(f"Found {len(similar_products)} similar products within threshold")
+    
+    # Return top 10 matches or all if less than 10
+    max_results = min(10, len(similar_products))
+    return [item["product"] for item in similar_products[:max_results]]
+
+# # FIXED API: Search Products by Image with enhanced logging
+# @app.post("/products/search-by-image", response_model=List[Product])
+# async def search_products_by_image(file: UploadFile = File(...)):
+#     # Check if required libraries are installed
+#     try:
+#         import imagehash
+#         from PIL import Image as PILImage
+#         from PIL import UnidentifiedImageError
+#     except ImportError as e:
+#         print(f"Missing required libraries: {str(e)}")
+#         raise HTTPException(
+#             status_code=500,
+#             detail="Image processing libraries not installed. Install with: pip install pillow imagehash"
+#         )
+
+#     # Read and validate uploaded image
+#     try:
+#         contents = await file.read()
+#         if not contents:
+#             raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        
+#         image_stream = BytesIO(contents)
+#         try:
+#             uploaded_image = PILImage.open(image_stream)
+#             # Convert to RGB if necessary
+#             if uploaded_image.mode != 'RGB':
+#                 uploaded_image = uploaded_image.convert('RGB')
+#         except UnidentifiedImageError:
+#             raise HTTPException(status_code=400, detail="Unsupported image format")
+        
+#         uploaded_hash = imagehash.phash(uploaded_image)
+#         print(f"Uploaded image hash: {uploaded_hash}")
+#     except Exception as e:
+#         print(f"Error processing uploaded image: {str(e)}")
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"Error processing uploaded image: {str(e)}"
+#         )
+
+#     # Get all products with thumbnails
+#     query = data_table.select().where(data_table.c.thumbnail_url != None)
+#     rows = await database.fetch_all(query)
+    
+#     similar_products = []
+#     threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 15))  # Configurable threshold
+    
+#     print(f"Comparing against {len(rows)} products with threshold {threshold}")
+    
+#     # Use a single HTTP session for all requests
+#     async with aiohttp.ClientSession() as session:
+#         for i, row in enumerate(rows):
+#             product = dict(row)
+#             thumbnail_url = fix_invalid_url(product.get("thumbnail_url"))
+            
+#             if not thumbnail_url:
+#                 print(f"Skipping product {product['id']} - no thumbnail URL")
+#                 continue
+                
+#             try:
+#                 # Fetch product image
+#                 async with session.get(thumbnail_url, timeout=10) as response:
+#                     if response.status != 200:
+#                         print(f"Failed to fetch {thumbnail_url}: HTTP {response.status}")
+#                         continue
+                        
+#                     img_data = await response.read()
+#                     if not img_data:
+#                         print(f"Empty image data for {thumbnail_url}")
+#                         continue
+                        
+#                     try:
+#                         imported_image = PILImage.open(BytesIO(img_data))
+#                         # Convert to RGB if necessary
+#                         if imported_image.mode != 'RGB':
+#                             imported_image = imported_image.convert('RGB')
+#                     except UnidentifiedImageError:
+#                         print(f"Unsupported image format for {thumbnail_url}")
+#                         continue
+                        
+#                     imported_hash = imagehash.phash(imported_image)
+#                     distance = abs(uploaded_hash - imported_hash)
+                    
+#                     print(f"Product {product['id']} - Distance: {distance}, Hash: {imported_hash}")
+                    
+#                     if distance <= threshold:
+#                         print(f"Match found! Product: {product['name']} (ID: {product['id']}), Distance: {distance}")
+#                         similar_products.append(Product(**product))
+#             except Exception as e:
+#                 print(f"Error processing product {product['id']}: {str(e)}")
+    
+#     print(f"Found {len(similar_products)} similar products")
+#     return similar_products
 
 # API: List Products
 @app.get("/products", response_model=List[Product])
