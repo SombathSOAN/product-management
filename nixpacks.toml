@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python3", "postgresql_16.dev", "gcc", "libxslt.dev"]
+nixPkgs = ["python3", "postgresql_16.dev", "gcc", "libxslt.dev", "tesseract"]
 
 [phases.install]
 cmds = [
