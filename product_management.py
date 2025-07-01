@@ -24,20 +24,21 @@ import pytesseract
 from PIL import Image as PILImage
 
 
-
-
 # Timezone utility functions
 def to_aware(dt):
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
 
 def to_naive(dt):
     if dt.tzinfo is not None:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
 
+
 # Load environment variables
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:OoPOlzJfLMJpYCkXqvvfpNHDuoObQzWC@postgres.railway.internal:5432/railway")
+DATABASE_URL = os.getenv("DATABASE_URL",
+                         "postgresql://postgres:OoPOlzJfLMJpYCkXqvvfpNHDuoObQzWC@postgres.railway.internal:5432/railway")
 
 # FIX 1: CORRECT DATABASE URL FOR RAILWAY
 if DATABASE_URL.startswith("postgres://"):
@@ -144,20 +145,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Health check endpoint for Railway
 @app.get("/")
 async def root():
     return {"message": "Product Management API is running", "status": "healthy"}
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "product-management-api"}
+
 
 @app.on_event("startup")
 async def startup():
     await database.connect()
     metadata.create_all(engine)
-    
+
     # Check and add missing columns to products table
     with engine.connect() as connection:
         # Check for display_price
@@ -167,14 +171,14 @@ async def startup():
                 "WHERE table_name = 'products' AND column_name = 'display_price')"
             )
         ).scalar()
-        
+
         if not display_price_exists:
             connection.execute(
                 sqlalchemy.text(
                     "ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE"
                 )
             )
-        
+
         # Check for review_count
         review_count_exists = connection.execute(
             sqlalchemy.text(
@@ -182,14 +186,14 @@ async def startup():
                 "WHERE table_name = 'products' AND column_name = 'review_count')"
             )
         ).scalar()
-        
+
         if not review_count_exists:
             connection.execute(
                 sqlalchemy.text(
                     "ALTER TABLE products ADD COLUMN review_count INTEGER DEFAULT 0"
                 )
             )
-        
+
         # Check for average_rating
         avg_rating_exists = connection.execute(
             sqlalchemy.text(
@@ -197,19 +201,21 @@ async def startup():
                 "WHERE table_name = 'products' AND column_name = 'average_rating')"
             )
         ).scalar()
-        
+
         if not avg_rating_exists:
             connection.execute(
                 sqlalchemy.text(
                     "ALTER TABLE products ADD COLUMN average_rating FLOAT DEFAULT 0.0"
                 )
             )
-        
+
         connection.commit()
+
 
 @app.on_event("shutdown")
 async def shutdown():
     await database.disconnect()
+
 
 class Product(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -237,7 +243,7 @@ class Product(BaseModel):
     average_rating: float = 0.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     @validator("created_at", "updated_at", pre=True, always=True)
     def ensure_timezone(cls, v):
         if v is None:
@@ -282,9 +288,11 @@ class Product(BaseModel):
             }
         }
 
+
 class SearchLog(BaseModel):
     query_text: str
     clicked_product_id: Optional[str] = None
+
 
 class Banner(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -296,6 +304,7 @@ class Banner(BaseModel):
     status: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class UserLocation(BaseModel):
     user_id: str
@@ -328,6 +337,7 @@ class UserLocation(BaseModel):
             }
         }
 
+
 class UserLocationResponse(BaseModel):
     id: str
     user_id: str
@@ -341,6 +351,7 @@ class UserLocationResponse(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+
 class Review(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     product_id: str
@@ -349,7 +360,7 @@ class Review(BaseModel):
     comment: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     @validator("created_at", "updated_at", pre=True, always=True)
     def ensure_timezone(cls, v):
         if v is None:
@@ -378,15 +389,16 @@ class Review(BaseModel):
             }
         }
 
+
 async def update_product_review_stats(product_id: str):
     # Calculate new review stats
     stats_query = sqlalchemy.select(
         func.count().label("review_count"),
         func.avg(review_table.c.rating).label("average_rating")
     ).where(review_table.c.product_id == product_id)
-    
+
     stats = await database.fetch_one(stats_query)
-    
+
     # Update product
     update_query = (
         data_table.update()
@@ -397,6 +409,7 @@ async def update_product_review_stats(product_id: str):
         )
     )
     await database.execute(update_query)
+
 
 # API: Track User Location
 @app.post("/users/location")
@@ -412,6 +425,7 @@ async def track_user_location(location: UserLocation):
     query = user_location_table.insert().values(**location_data)
     await database.execute(query)
     return {"message": "Location tracked successfully."}
+
 
 # API: Get User Locations
 @app.get("/users/location", response_model=List[UserLocationResponse])
@@ -443,6 +457,7 @@ async def get_user_locations(
         location["created_at"] = to_aware(location["created_at"])
         locations.append(UserLocationResponse(**location))
     return locations
+
 
 # API: Search Products
 @app.get("/products/search", response_model=List[Product])
@@ -488,6 +503,7 @@ async def search_products(q: str = Query(..., min_length=1)):
             continue
     return products
 
+
 # Enhanced API: Search Products by Image with OCR and image matching
 @app.post("/products/search-by-image", response_model=List[Product])
 async def search_products_by_image(file: UploadFile = File(...)):
@@ -501,26 +517,27 @@ async def search_products_by_image(file: UploadFile = File(...)):
             status_code=500,
             detail="Image processing libraries not installed. Install with: pip install pillow imagehash"
         )
-    
+
     # Read uploaded image
     try:
         contents = await file.read()
         if not contents:
             return []
-            
+
         image_stream = BytesIO(contents)
         try:
             uploaded_image = PILImage.open(image_stream)
             # Convert to RGB for consistent processing
             if uploaded_image.mode != 'RGB':
-                uploaded_image = uploaded_image.convert('L')  # Convert to grayscale for better OCR accuracy with Khmer text
+                uploaded_image = uploaded_image.convert(
+                    'L')  # Convert to grayscale for better OCR accuracy with Khmer text
         except UnidentifiedImageError:
             return []
-        
+
         # Generate hash for uploaded image
         uploaded_hash = imagehash.phash(uploaded_image)
         print(f"DEBUG: Uploaded image hash: {uploaded_hash}")
-        
+
         # OCR: Extract text from image with error handling
         keywords = []
         try:
@@ -530,12 +547,13 @@ async def search_products_by_image(file: UploadFile = File(...)):
             except ImportError:
                 print("WARNING: pytesseract not installed. Skipping OCR.")
                 pytesseract = None
-                
+
             if pytesseract:
                 try:
-                    ocr_text = pytesseract.image_to_string(uploaded_image, lang='eng+khm+th', config='--psm 6')  # Use PSM 6 for assuming a single uniform block of text to improve accuracy
+                    ocr_text = pytesseract.image_to_string(uploaded_image, lang='eng+khm+th',
+                                                           config='--psm 6')  # Use PSM 6 for assuming a single uniform block of text to improve accuracy
                     print(f"OCR extracted text: {ocr_text}")
-                    
+
                     # Clean and tokenize OCR text
                     clean_text = re.sub(r'[^\w\s]', '', ocr_text).lower()
                     keywords = clean_text.split()
@@ -543,10 +561,10 @@ async def search_products_by_image(file: UploadFile = File(...)):
                     print(f"Keywords extracted: {keywords}")
                 except Exception as e:
                     print(f"ERROR: OCR processing failed - {str(e)}")
-        
+
         except Exception as e:
             print(f"ERROR: OCR setup failed - {str(e)}")
-        
+
     except Exception as e:
         print(f"ERROR: Failed to process uploaded image - {str(e)}")
         return []
@@ -554,33 +572,33 @@ async def search_products_by_image(file: UploadFile = File(...)):
     # Get all products with thumbnails
     query = data_table.select().where(data_table.c.thumbnail_url != None)
     rows = await database.fetch_all(query)
-    
+
     if not rows:
         return []
-    
+
     matched_products = []
     threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 25))  # Balanced threshold
-    
+
     # Use a single HTTP session for all requests
     async with aiohttp.ClientSession() as session:
         for row in rows:
             try:
                 product = dict(row)
                 thumbnail_url = fix_invalid_url(product.get("thumbnail_url"))
-                
+
                 if not thumbnail_url:
                     continue
-                    
+
                 # Fetch product image
                 try:
                     async with session.get(thumbnail_url, timeout=10) as response:
                         if response.status != 200:
                             continue
-                            
+
                         img_data = await response.read()
                         if not img_data:
                             continue
-                            
+
                         try:
                             imported_image = PILImage.open(BytesIO(img_data))
                             # Preprocess product image
@@ -588,10 +606,10 @@ async def search_products_by_image(file: UploadFile = File(...)):
                                 imported_image = imported_image.convert('RGB')
                         except UnidentifiedImageError:
                             continue
-                            
+
                         imported_hash = imagehash.phash(imported_image)
                         distance = abs(uploaded_hash - imported_hash)
-                        
+
                         # Calculate text match score
                         text_match_score = 0
                         if keywords:  # Only do text matching if we have keywords
@@ -599,12 +617,12 @@ async def search_products_by_image(file: UploadFile = File(...)):
                             for keyword in keywords:
                                 if keyword in product_text:
                                     text_match_score += 1
-                        
+
                         # Weighted scoring system
                         image_score = max(0, (threshold - distance) / threshold)  # Normalize 0-1
                         text_score = min(1, text_match_score / 5)  # Cap at 1.0
                         combined_score = (image_score * 0.6) + (text_score * 0.4)
-                        
+
                         # Always include some matches, but prioritize good matches
                         if distance <= threshold or text_match_score > 0:
                             matched_products.append({
@@ -622,108 +640,16 @@ async def search_products_by_image(file: UploadFile = File(...)):
             except Exception as e:
                 print(f"ERROR processing product {row.get('id')}: {str(e)}")
                 continue
-    
+
     # Sort by combined score (highest first)
     matched_products.sort(key=lambda x: x["combined_score"], reverse=True)
-    
+
     # Log final matches
     print(f"Found {len(matched_products)} candidate products")
-    
+
     # Return top 10 matches
     return [item["product"] for item in matched_products[:10]]
 
-# # FIXED API: Search Products by Image with enhanced logging
-# @app.post("/products/search-by-image", response_model=List[Product])
-# async def search_products_by_image(file: UploadFile = File(...)):
-#     # Check if required libraries are installed
-#     try:
-#         import imagehash
-#         from PIL import Image as PILImage
-#         from PIL import UnidentifiedImageError
-#     except ImportError as e:
-#         print(f"Missing required libraries: {str(e)}")
-#         raise HTTPException(
-#             status_code=500,
-#             detail="Image processing libraries not installed. Install with: pip install pillow imagehash"
-#         )
-
-#     # Read and validate uploaded image
-#     try:
-#         contents = await file.read()
-#         if not contents:
-#             raise HTTPException(status_code=400, detail="Uploaded file is empty")
-        
-#         image_stream = BytesIO(contents)
-#         try:
-#             uploaded_image = PILImage.open(image_stream)
-#             # Convert to RGB if necessary
-#             if uploaded_image.mode != 'RGB':
-#                 uploaded_image = uploaded_image.convert('RGB')
-#         except UnidentifiedImageError:
-#             raise HTTPException(status_code=400, detail="Unsupported image format")
-        
-#         uploaded_hash = imagehash.phash(uploaded_image)
-#         print(f"Uploaded image hash: {uploaded_hash}")
-#     except Exception as e:
-#         print(f"Error processing uploaded image: {str(e)}")
-#         raise HTTPException(
-#             status_code=400,
-#             detail=f"Error processing uploaded image: {str(e)}"
-#         )
-
-#     # Get all products with thumbnails
-#     query = data_table.select().where(data_table.c.thumbnail_url != None)
-#     rows = await database.fetch_all(query)
-    
-#     similar_products = []
-#     threshold = int(os.getenv("IMAGE_HASH_THRESHOLD", 15))  # Configurable threshold
-    
-#     print(f"Comparing against {len(rows)} products with threshold {threshold}")
-    
-#     # Use a single HTTP session for all requests
-#     async with aiohttp.ClientSession() as session:
-#         for i, row in enumerate(rows):
-#             product = dict(row)
-#             thumbnail_url = fix_invalid_url(product.get("thumbnail_url"))
-            
-#             if not thumbnail_url:
-#                 print(f"Skipping product {product['id']} - no thumbnail URL")
-#                 continue
-                
-#             try:
-#                 # Fetch product image
-#                 async with session.get(thumbnail_url, timeout=10) as response:
-#                     if response.status != 200:
-#                         print(f"Failed to fetch {thumbnail_url}: HTTP {response.status}")
-#                         continue
-                        
-#                     img_data = await response.read()
-#                     if not img_data:
-#                         print(f"Empty image data for {thumbnail_url}")
-#                         continue
-                        
-#                     try:
-#                         imported_image = PILImage.open(BytesIO(img_data))
-#                         # Convert to RGB if necessary
-#                         if imported_image.mode != 'RGB':
-#                             imported_image = imported_image.convert('RGB')
-#                     except UnidentifiedImageError:
-#                         print(f"Unsupported image format for {thumbnail_url}")
-#                         continue
-                        
-#                     imported_hash = imagehash.phash(imported_image)
-#                     distance = abs(uploaded_hash - imported_hash)
-                    
-#                     print(f"Product {product['id']} - Distance: {distance}, Hash: {imported_hash}")
-                    
-#                     if distance <= threshold:
-#                         print(f"Match found! Product: {product['name']} (ID: {product['id']}), Distance: {distance}")
-#                         similar_products.append(Product(**product))
-#             except Exception as e:
-#                 print(f"Error processing product {product['id']}: {str(e)}")
-    
-#     print(f"Found {len(similar_products)} similar products")
-#     return similar_products
 
 # API: List Products
 @app.get("/products", response_model=List[Product])
@@ -763,6 +689,74 @@ async def list_products(
             continue
     return products
 
+
+# NEW ENDPOINT: Top Rated Products
+@app.get("/products/top-rated", response_model=List[Product])
+async def get_top_rated_products(
+        min_rating: float = Query(4.0, ge=0.0, le=5.0, description="Minimum average rating"),
+        min_reviews: int = Query(5, ge=0, description="Minimum number of reviews required"),
+        sort_by: str = Query("both", description="Sorting method: rating, popularity, or both"),
+        skip: int = Query(0, ge=0, description="Pagination offset"),
+        limit: int = Query(10, le=100, description="Number of products to return")
+):
+    """
+    Get top-rated products with filtering and sorting options.
+
+    Sorting options:
+    - 'rating': Sort by highest average rating
+    - 'popularity': Sort by highest number of reviews
+    - 'both': Sort by highest rating then by popularity (default)
+    """
+    # Base query for published products with sufficient reviews and rating
+    query = data_table.select().where(
+        and_(
+            data_table.c.published == True,
+            data_table.c.average_rating >= min_rating,
+            data_table.c.review_count >= min_reviews
+        )
+    )
+
+    # Apply sorting based on parameter
+    if sort_by == "rating":
+        query = query.order_by(data_table.c.average_rating.desc())
+    elif sort_by == "popularity":
+        query = query.order_by(data_table.c.review_count.desc())
+    else:  # Default: both (rating then popularity)
+        query = query.order_by(
+            data_table.c.average_rating.desc(),
+            data_table.c.review_count.desc()
+        )
+
+    # Apply pagination
+    query = query.offset(skip).limit(limit)
+
+    rows = await database.fetch_all(query)
+    products = []
+    for row in rows:
+        try:
+            row_data = dict(row)
+            # Fix URLs if needed
+            if row_data.get("thumbnail_url"):
+                try:
+                    HttpUrl(row_data["thumbnail_url"])
+                except:
+                    row_data["thumbnail_url"] = fix_invalid_url(row_data["thumbnail_url"])
+            if row_data.get("gallery_urls"):
+                fixed_urls = []
+                for url in row_data["gallery_urls"]:
+                    try:
+                        HttpUrl(url)
+                        fixed_urls.append(url)
+                    except:
+                        fixed_urls.append(fix_invalid_url(url))
+                row_data["gallery_urls"] = fixed_urls
+            products.append(Product(**row_data))
+        except Exception as e:
+            print(f"Error processing product {row.get('id')}: {str(e)}")
+            continue
+    return products
+
+
 def fix_invalid_url(url):
     if url.startswith("%20") or url.startswith("/"):
         base = "https://www.dahoughengenterprise.com"
@@ -772,6 +766,7 @@ def fix_invalid_url(url):
     if not url.startswith("http"):
         return f"https://{url}"
     return url
+
 
 # API: Create Product
 @app.post("/products", response_model=Product)
@@ -794,6 +789,7 @@ async def create_product(product: Product):
     await database.execute(query)
     return product
 
+
 # API: Get Product by ID
 @app.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str):
@@ -802,6 +798,7 @@ async def get_product(product_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail="Product not found.")
     return Product(**dict(row))
+
 
 # API: Update Product
 @app.put("/products/{product_id}", response_model=Product)
@@ -826,6 +823,7 @@ async def update_product(product_id: str, updated: Product):
     await database.execute(update_query)
     return updated
 
+
 # API: Delete Product
 @app.delete("/products/{product_id}")
 async def delete_product(product_id: str):
@@ -839,6 +837,7 @@ async def delete_product(product_id: str):
     delete_query = data_table.delete().where(data_table.c.id == product_id)
     await database.execute(delete_query)
     return {"message": "Product and its reviews deleted successfully."}
+
 
 # API: Delete Products by Name
 @app.delete("/products/delete/by-name")
@@ -856,6 +855,7 @@ async def delete_products_by_name(name: str):
     result = await database.execute(delete_query)
     return {"message": f"Deleted {result} products and their reviews with name like: {name}"}
 
+
 # API: Log Search Click
 @app.post("/products/search/click")
 async def log_search_click(log: SearchLog):
@@ -867,6 +867,7 @@ async def log_search_click(log: SearchLog):
     )
     await database.execute(log_query)
     return {"message": "Search click logged."}
+
 
 # API: Get Search Suggestions
 @app.get("/products/search/suggestions", response_model=List[str])
@@ -882,6 +883,7 @@ async def suggest_search_keywords(q: Optional[str] = Query(None), limit: int = 1
     rows = await database.fetch_all(query)
     return [row["query_text"] for row in rows if q.upper() in row["query_text"].upper()][:limit]
 
+
 # API: Get Trending Search Keywords
 @app.get("/products/search/trending", response_model=List[str])
 async def trending_search_keywords(limit: int = 10):
@@ -893,6 +895,7 @@ async def trending_search_keywords(limit: int = 10):
     )
     rows = await database.fetch_all(query)
     return [row["query_text"] for row in rows]
+
 
 # API: Import Products
 @app.post("/products/import")
@@ -967,6 +970,7 @@ async def import_products_excel(file: UploadFile = File(...)):
         response["errors"] = errors[:10]
     return response
 
+
 @app.post("/products/fix-all")
 async def fix_all_products():
     query = data_table.select()
@@ -1026,6 +1030,7 @@ async def fix_all_products():
         "errors": errors
     }
 
+
 @app.post("/products/fix-gallery-urls")
 async def fix_invalid_gallery_urls():
     query = data_table.select()
@@ -1064,6 +1069,7 @@ async def fix_invalid_gallery_urls():
         "errors": errors
     }
 
+
 # API: Create Banner
 @app.post("/banners", response_model=Banner)
 async def create_banner(banner: Banner):
@@ -1079,12 +1085,14 @@ async def create_banner(banner: Banner):
     await database.execute(query)
     return banner
 
+
 # API: List Banners
 @app.get("/banners", response_model=List[Banner])
 async def list_banners():
     query = banner_table.select()
     rows = await database.fetch_all(query)
     return [Banner(**dict(row)) for row in rows]
+
 
 # API: Update Banner
 @app.put("/banners/{banner_id}", response_model=Banner)
@@ -1105,12 +1113,14 @@ async def update_banner(banner_id: str, banner: Banner):
     await database.execute(update_query)
     return banner
 
+
 # Debug Endpoint
 @app.get("/products/debug")
 async def debug_products():
     query = data_table.select()
     rows = await database.fetch_all(query)
     return {"total_products": len(rows), "sample": [dict(row) for row in rows[:5]]}
+
 
 # ========== REVIEW ENDPOINTS ========== #
 
@@ -1121,47 +1131,48 @@ async def create_review(product_id: str, review: Review):
     product = await database.fetch_one(product_query)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     # Prepare review data
     review_data = review.dict()
     review_data["id"] = str(uuid4())
     review_data["product_id"] = product_id
     review_data["created_at"] = to_naive(review.created_at)
     review_data["updated_at"] = to_naive(review.updated_at)
-    
+
     # Insert review
     query = review_table.insert().values(**review_data)
     await database.execute(query)
-    
+
     # Update product review stats
     await update_product_review_stats(product_id)
-    
+
     return review
+
 
 @app.get("/products/{product_id}/reviews", response_model=List[Review])
 async def get_product_reviews(
-    product_id: str,
-    min_rating: Optional[int] = Query(None, ge=1, le=5),
-    max_rating: Optional[int] = Query(None, ge=1, le=5),
-    sort_by: Optional[str] = Query("newest", description="Sort by: newest, oldest, highest, lowest"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, le=100)
+        product_id: str,
+        min_rating: Optional[int] = Query(None, ge=1, le=5),
+        max_rating: Optional[int] = Query(None, ge=1, le=5),
+        sort_by: Optional[str] = Query("newest", description="Sort by: newest, oldest, highest, lowest"),
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, le=100)
 ):
     # Verify product exists
     product_query = data_table.select().where(data_table.c.id == product_id)
     product = await database.fetch_one(product_query)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     # Build query
     query = review_table.select().where(review_table.c.product_id == product_id)
-    
+
     # Apply rating filters
     if min_rating:
         query = query.where(review_table.c.rating >= min_rating)
     if max_rating:
         query = query.where(review_table.c.rating <= max_rating)
-    
+
     # Apply sorting
     if sort_by == "newest":
         query = query.order_by(review_table.c.created_at.desc())
@@ -1171,25 +1182,26 @@ async def get_product_reviews(
         query = query.order_by(review_table.c.rating.desc())
     elif sort_by == "lowest":
         query = query.order_by(review_table.c.rating.asc())
-    
+
     # Apply pagination
     query = query.offset(skip).limit(limit)
-    
+
     rows = await database.fetch_all(query)
     return [Review(**dict(row)) for row in rows]
 
+
 @app.get("/reviews", response_model=List[Review])
 async def get_all_reviews(
-    product_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    min_rating: Optional[int] = Query(None, ge=1, le=5),
-    max_rating: Optional[int] = Query(None, ge=1, le=5),
-    sort_by: Optional[str] = Query("newest", description="Sort by: newest, oldest, highest, lowest"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, le=100)
+        product_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        min_rating: Optional[int] = Query(None, ge=1, le=5),
+        max_rating: Optional[int] = Query(None, ge=1, le=5),
+        sort_by: Optional[str] = Query("newest", description="Sort by: newest, oldest, highest, lowest"),
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, le=100)
 ):
     query = review_table.select()
-    
+
     # Apply filters
     if product_id:
         query = query.where(review_table.c.product_id == product_id)
@@ -1199,7 +1211,7 @@ async def get_all_reviews(
         query = query.where(review_table.c.rating >= min_rating)
     if max_rating:
         query = query.where(review_table.c.rating <= max_rating)
-    
+
     # Apply sorting
     if sort_by == "newest":
         query = query.order_by(review_table.c.created_at.desc())
@@ -1209,12 +1221,13 @@ async def get_all_reviews(
         query = query.order_by(review_table.c.rating.desc())
     elif sort_by == "lowest":
         query = query.order_by(review_table.c.rating.asc())
-    
+
     # Apply pagination
     query = query.offset(skip).limit(limit)
-    
+
     rows = await database.fetch_all(query)
     return [Review(**dict(row)) for row in rows]
+
 
 @app.get("/reviews/{review_id}", response_model=Review)
 async def get_review(review_id: str):
@@ -1224,6 +1237,7 @@ async def get_review(review_id: str):
         raise HTTPException(status_code=404, detail="Review not found")
     return Review(**dict(row))
 
+
 @app.put("/reviews/{review_id}", response_model=Review)
 async def update_review(review_id: str, updated_review: Review):
     # Get existing review
@@ -1231,12 +1245,12 @@ async def update_review(review_id: str, updated_review: Review):
     existing = await database.fetch_one(query)
     if not existing:
         raise HTTPException(status_code=404, detail="Review not found")
-    
+
     # Prepare update data
     update_data = updated_review.dict()
     update_data["updated_at"] = to_naive(datetime.now(timezone.utc))
     update_data["created_at"] = existing["created_at"]  # Preserve original creation time
-    
+
     # Update review
     update_query = (
         review_table.update()
@@ -1244,11 +1258,12 @@ async def update_review(review_id: str, updated_review: Review):
         .values(**update_data)
     )
     await database.execute(update_query)
-    
+
     # Update product stats
     await update_product_review_stats(existing["product_id"])
-    
+
     return updated_review
+
 
 @app.delete("/reviews/{review_id}")
 async def delete_review(review_id: str):
@@ -1257,12 +1272,11 @@ async def delete_review(review_id: str):
     review = await database.fetch_one(query)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
-    
+
     # Delete the review
     await database.execute(review_table.delete().where(review_table.c.id == review_id))
-    
+
     # Update product stats
     await update_product_review_stats(review["product_id"])
-    
-    return {"message": "Review deleted successfully"}
 
+    return {"message": "Review deleted successfully"}
