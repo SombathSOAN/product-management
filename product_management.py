@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 import databases
 import sqlalchemy
 from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Table, MetaData, or_, func, and_, ForeignKey
-from sqlalchemy.dialects.postgresql import ARRAY
+# from sqlalchemy.dialects.postgresql import ARRAY
 import re
 import urllib.parse
 import aiohttp  # Using aiohttp instead of requests for async
@@ -58,9 +58,11 @@ data_table = Table(
     Column("name", String, index=True),
     Column("price", Float),
     Column("unit", String),
-    Column("tags", ARRAY(String)),
+    Column("tags", String),
+    # Column("tags", ARRAY(String)),
     Column("thumbnail_url", String),
-    Column("gallery_urls", ARRAY(String)),
+    # Column("gallery_urls", ARRAY(String)),
+    Column("gallery_urls", String),
     Column("quantity", Integer),
     Column("stock_visibility", String),
     Column("display_price", Boolean, default=True, server_default=sqlalchemy.sql.expression.true(), index=True),
@@ -89,7 +91,8 @@ banner_table = Table(
     Column("button_text", String, nullable=True),
     Column("button_url", String, nullable=True),
     Column("description", String, nullable=True),
-    Column("start_end_date", ARRAY(DateTime)),
+    # Column("start_end_date", ARRAY(DateTime)),
+    Column("start_end_date", String),
     Column("status", Boolean, default=True),
     Column("created_at", DateTime),
     Column("updated_at", DateTime)
@@ -474,7 +477,8 @@ async def search_products(q: str = Query(..., min_length=1)):
             data_table.c.published == True,
             or_(
                 data_table.c.name.ilike(f"%{q}%"),
-                func.array_to_string(data_table.c.tags, ' ').ilike(f"%{q}%")
+                # func.array_to_string(data_table.c.tags, ' ').ilike(f"%{q}%")
+                data_table.c.tags.ilike(f"%{q}%")
             )
         )
     )
@@ -483,15 +487,16 @@ async def search_products(q: str = Query(..., min_length=1)):
     for row in rows:
         try:
             row_data = dict(row)
-            if row_data.get("gallery_urls"):
-                fixed_urls = []
-                for url in row_data["gallery_urls"]:
+            gallery_urls = row_data.get("gallery_urls", "")
+            fixed_urls = []
+            if gallery_urls:
+                for url in gallery_urls.split(","):
                     try:
                         HttpUrl(url)
                         fixed_urls.append(url)
                     except:
                         fixed_urls.append(fix_invalid_url(url))
-                row_data["gallery_urls"] = fixed_urls
+            row_data["gallery_urls"] = fixed_urls
             if row_data.get("thumbnail_url"):
                 try:
                     HttpUrl(row_data["thumbnail_url"])
@@ -669,15 +674,16 @@ async def list_products(
     for row in rows:
         try:
             row_data = dict(row)
-            if row_data.get("gallery_urls"):
-                fixed_urls = []
-                for url in row_data["gallery_urls"]:
+            gallery_urls = row_data.get("gallery_urls", "")
+            fixed_urls = []
+            if gallery_urls:
+                for url in gallery_urls.split(","):
                     try:
                         HttpUrl(url)
                         fixed_urls.append(url)
                     except:
                         fixed_urls.append(fix_invalid_url(url))
-                row_data["gallery_urls"] = fixed_urls
+            row_data["gallery_urls"] = fixed_urls
             if row_data.get("thumbnail_url"):
                 try:
                     HttpUrl(row_data["thumbnail_url"])
@@ -741,15 +747,16 @@ async def get_top_rated_products(
                     HttpUrl(row_data["thumbnail_url"])
                 except:
                     row_data["thumbnail_url"] = fix_invalid_url(row_data["thumbnail_url"])
-            if row_data.get("gallery_urls"):
-                fixed_urls = []
-                for url in row_data["gallery_urls"]:
+            gallery_urls = row_data.get("gallery_urls", "")
+            fixed_urls = []
+            if gallery_urls:
+                for url in gallery_urls.split(","):
                     try:
                         HttpUrl(url)
                         fixed_urls.append(url)
                     except:
                         fixed_urls.append(fix_invalid_url(url))
-                row_data["gallery_urls"] = fixed_urls
+            row_data["gallery_urls"] = fixed_urls
             products.append(Product(**row_data))
         except Exception as e:
             print(f"Error processing product {row.get('id')}: {str(e)}")
@@ -784,7 +791,8 @@ async def create_product(product: Product):
     product_dict["created_at"] = to_naive(to_aware(product.created_at))
     product_dict["updated_at"] = to_naive(to_aware(product.updated_at))
     product_dict["thumbnail_url"] = str(product_dict["thumbnail_url"])
-    product_dict["gallery_urls"] = [str(u) for u in product_dict["gallery_urls"]]
+    # product_dict["gallery_urls"] = [str(u) for u in product_dict["gallery_urls"]]
+    product_dict["gallery_urls"] = str(product_dict["gallery_urls"])
     query = data_table.insert().values(**product_dict)
     await database.execute(query)
     return product
@@ -818,7 +826,8 @@ async def update_product(product_id: str, updated: Product):
     updated_dict["updated_at"] = to_naive(datetime.now(timezone.utc))
     updated_dict["created_at"] = to_naive(to_aware(row["created_at"]))
     updated_dict["thumbnail_url"] = str(updated_dict["thumbnail_url"])
-    updated_dict["gallery_urls"] = [str(url) for url in updated_dict["gallery_urls"]]
+    # updated_dict["gallery_urls"] = [str(url) for url in updated_dict["gallery_urls"]]
+    updated_dict["gallery_urls"] = str(updated_dict["gallery_urls"])
     update_query = data_table.update().where(data_table.c.id == product_id).values(**updated_dict)
     await database.execute(update_query)
     return updated
@@ -927,9 +936,11 @@ async def import_products_excel(file: UploadFile = File(...)):
                 "name": row.get("Name", ""),
                 "price": float(row.get("Price", 0)),
                 "unit": row.get("Unit", ""),
-                "tags": row.get("Tags", "").split(",") if row.get("Tags") else [],
+                "tags": row.get("Tags", ""),
+                # "tags": row.get("Tags", "").split(",") if row.get("Tags") else [],
                 "thumbnail_url": fix_invalid_url(row.get("Thumbnail URL", "")),
-                "gallery_urls": [fix_invalid_url(row.get("Gallery URLs", ""))] if row.get("Gallery URLs") else [],
+                # "gallery_urls": [fix_invalid_url(row.get("Gallery URLs", ""))] if row.get("Gallery URLs") else [],
+                "gallery_urls": fix_invalid_url(row.get("Gallery URLs", "")) if row.get("Gallery URLs") else "",
                 "quantity": int(row.get("Quantity", 0)),
                 "stock_visibility": row.get("Stock Visibility", "show_quantity"),
                 "display_price": bool(row.get("Display Price", True)),
