@@ -38,7 +38,7 @@ def to_naive(dt):
 # Load environment variables
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL",
-                         "postgresql://postgres:OoPOlzJfLMJpYCkXqvvfpNHDuoObQzWC@postgres.railway.internal:5432/railway")
+                         "mysql+aiomysql://root:your_password@127.0.0.1:3306/your_database")
 
 # FIX 1: CORRECT DATABASE URL FOR RAILWAY
 if DATABASE_URL.startswith("postgres://"):
