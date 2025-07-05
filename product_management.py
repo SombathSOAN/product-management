@@ -163,56 +163,54 @@ async def health_check():
 @app.on_event("startup")
 async def startup():
     await database.connect()
-    # metadata.create_all(engine)
 
-    # Check and add missing columns to products table
-    with engine.connect() as connection:
-        # Check for display_price
-        display_price_exists = connection.execute(
-            sqlalchemy.text(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'products' AND column_name = 'display_price')"
-            )
-        ).scalar()
+    # Check for display_price column
+    query_display_price = """
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'display_price'
+    )
+    """
+    display_price_exists = await database.fetch_val(query=query_display_price)
 
-        if not display_price_exists:
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE"
-                )
-            )
+    if not display_price_exists:
+        alter_display_price = """
+        ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE
+        """
+        await database.execute(query=alter_display_price)
 
-        # Check for review_count
-        review_count_exists = connection.execute(
-            sqlalchemy.text(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'products' AND column_name = 'review_count')"
-            )
-        ).scalar()
+    # Check for review_count column
+    query_review_count = """
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'review_count'
+    )
+    """
+    review_count_exists = await database.fetch_val(query=query_review_count)
 
-        if not review_count_exists:
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE products ADD COLUMN review_count INTEGER DEFAULT 0"
-                )
-            )
+    if not review_count_exists:
+        alter_review_count = """
+        ALTER TABLE products ADD COLUMN review_count INTEGER DEFAULT 0
+        """
+        await database.execute(query=alter_review_count)
 
-        # Check for average_rating
-        avg_rating_exists = connection.execute(
-            sqlalchemy.text(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'products' AND column_name = 'average_rating')"
-            )
-        ).scalar()
+    # Check for average_rating column
+    query_average_rating = """
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'average_rating'
+    )
+    """
+    average_rating_exists = await database.fetch_val(query=query_average_rating)
 
-        if not avg_rating_exists:
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE products ADD COLUMN average_rating FLOAT DEFAULT 0.0"
-                )
-            )
-
-        connection.commit()
+    if not average_rating_exists:
+        alter_average_rating = """
+        ALTER TABLE products ADD COLUMN average_rating FLOAT DEFAULT 0.0
+        """
+        await database.execute(query=alter_average_rating)
 
 
 @app.on_event("shutdown")
