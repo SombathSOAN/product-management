@@ -163,7 +163,7 @@ async def health_check():
 @app.on_event("startup")
 async def startup():
     await database.connect()
-    metadata.create_all(engine)
+    # metadata.create_all(engine)
 
     # Check and add missing columns to products table
     with engine.connect() as connection:
