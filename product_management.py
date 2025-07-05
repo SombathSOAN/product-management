@@ -164,53 +164,96 @@ async def health_check():
 async def startup():
     await database.connect()
 
-    # Check for display_price column
-    query_display_price = """
-    SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'products' AND column_name = 'display_price'
-    )
-    """
-    display_price_exists = await database.fetch_val(query=query_display_price)
-
-    if not display_price_exists:
-        alter_display_price = """
-        ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE
+    # Create tables if they don't exist
+    try:
+        # Check if products table exists
+        table_check_query = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+            AND table_name = 'products'
+        )
         """
-        await database.execute(query=alter_display_price)
+        table_exists = await database.fetch_val(query=table_check_query)
+        
+        if not table_exists:
+            # Create all tables using metadata
+            print("Creating database tables...")
+            # Use synchronous engine for table creation
+            sync_engine = sqlalchemy.create_engine(DATABASE_URL.replace("+aiomysql", "+pymysql"))
+            metadata.create_all(sync_engine)
+            print("Database tables created successfully!")
+            return  # Skip column checks since tables are newly created
+            
+    except Exception as e:
+        print(f"Error checking/creating tables: {str(e)}")
+        # Try to create tables anyway
+        try:
+            sync_engine = sqlalchemy.create_engine(DATABASE_URL.replace("+aiomysql", "+pymysql"))
+            metadata.create_all(sync_engine)
+            print("Database tables created successfully!")
+            return
+        except Exception as create_error:
+            print(f"Failed to create tables: {str(create_error)}")
+            raise
+
+    # Check for display_price column (for existing tables)
+    try:
+        query_display_price = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'products' AND column_name = 'display_price'
+        )
+        """
+        display_price_exists = await database.fetch_val(query=query_display_price)
+
+        if not display_price_exists:
+            alter_display_price = """
+            ALTER TABLE products ADD COLUMN display_price BOOLEAN DEFAULT TRUE
+            """
+            await database.execute(query=alter_display_price)
+    except Exception as e:
+        print(f"Error checking display_price column: {str(e)}")
 
     # Check for review_count column
-    query_review_count = """
-    SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'products' AND column_name = 'review_count'
-    )
-    """
-    review_count_exists = await database.fetch_val(query=query_review_count)
-
-    if not review_count_exists:
-        alter_review_count = """
-        ALTER TABLE products ADD COLUMN review_count INTEGER DEFAULT 0
+    try:
+        query_review_count = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'products' AND column_name = 'review_count'
+        )
         """
-        await database.execute(query=alter_review_count)
+        review_count_exists = await database.fetch_val(query=query_review_count)
+
+        if not review_count_exists:
+            alter_review_count = """
+            ALTER TABLE products ADD COLUMN review_count INTEGER DEFAULT 0
+            """
+            await database.execute(query=alter_review_count)
+    except Exception as e:
+        print(f"Error checking review_count column: {str(e)}")
 
     # Check for average_rating column
-    query_average_rating = """
-    SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'products' AND column_name = 'average_rating'
-    )
-    """
-    average_rating_exists = await database.fetch_val(query=query_average_rating)
-
-    if not average_rating_exists:
-        alter_average_rating = """
-        ALTER TABLE products ADD COLUMN average_rating FLOAT DEFAULT 0.0
+    try:
+        query_average_rating = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'products' AND column_name = 'average_rating'
+        )
         """
-        await database.execute(query=alter_average_rating)
+        average_rating_exists = await database.fetch_val(query=query_average_rating)
+
+        if not average_rating_exists:
+            alter_average_rating = """
+            ALTER TABLE products ADD COLUMN average_rating FLOAT DEFAULT 0.0
+            """
+            await database.execute(query=alter_average_rating)
+    except Exception as e:
+        print(f"Error checking average_rating column: {str(e)}")
 
 
 @app.on_event("shutdown")
