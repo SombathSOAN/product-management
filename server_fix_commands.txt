@@ -1,0 +1,22 @@
+# Copy and paste these commands on your server after SSH login:
+
+# Navigate to project
+cd product-management
+
+# Activate virtual environment
+source /home/aeconlin/virtualenv/product-management/3.9/bin/activate
+
+# Pull latest changes
+git pull origin main
+
+# Fix the database configuration (remove unsupported parameters)
+sed -i '/max_queries=50/d' product_management.py
+sed -i '/max_inactive_connection_lifetime=300/d' product_management.py
+
+# Verify the fix worked
+echo "Checking if fix was applied..."
+grep -A 10 -B 2 "database = databases.Database" product_management.py
+
+# Test the server
+echo "Starting server test..."
+uvicorn product_management:app --host 0.0.0.0 --port 8000 --workers 1
