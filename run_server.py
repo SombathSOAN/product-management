@@ -7,7 +7,26 @@ Optimized for stability and performance
 import os
 import sys
 import subprocess
+import socket
 from pathlib import Path
+
+def is_port_available(port, host='0.0.0.0'):
+    """Check if a port is available"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, int(port)))
+            return True
+    except OSError:
+        return False
+
+def find_available_port(start_port=8001, host='0.0.0.0'):
+    """Find the next available port starting from start_port"""
+    port = start_port
+    while port < start_port + 100:  # Try up to 100 ports
+        if is_port_available(port, host):
+            return str(port)
+        port += 1
+    raise RuntimeError(f"No available ports found starting from {start_port}")
 
 def main():
     """Run the server with optimized settings"""
@@ -19,8 +38,17 @@ def main():
     os.environ['OMP_NUM_THREADS'] = '1'
     
     # Get port from environment or default
-    port = os.getenv('PORT', '8001')
+    requested_port = os.getenv('PORT', '8001')
     host = os.getenv('HOST', '0.0.0.0')
+    
+    # Check if requested port is available, if not find an alternative
+    if is_port_available(requested_port, host):
+        port = requested_port
+        print(f"✅ Port {port} is available")
+    else:
+        print(f"⚠️  Port {requested_port} is already in use")
+        port = find_available_port(int(requested_port), host)
+        print(f"🔄 Using alternative port {port}")
     
     # Check if we should use Gunicorn (production) or Uvicorn (development)
     use_gunicorn = os.getenv('USE_GUNICORN', 'false').lower() == 'true'
