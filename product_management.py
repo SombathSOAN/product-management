@@ -53,9 +53,7 @@ metadata = MetaData()
 database = databases.Database(
     DATABASE_URL,
     min_size=1,      # Minimum connections in pool
-    max_size=5,      # Maximum connections in pool
-    max_queries=50,  # Maximum queries per connection
-    max_inactive_connection_lifetime=300  # 5 minutes
+    max_size=5       # Maximum connections in pool
 )
 engine = sqlalchemy.create_engine(
     DATABASE_URL,
