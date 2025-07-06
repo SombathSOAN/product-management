@@ -105,17 +105,9 @@ main() {
     echo "🚀 Starting deployment process..."
     echo ""
     
-    # Check if SSH key is set up
-    echo "🔐 Testing SSH connection..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 $REMOTE_USER@$REMOTE_HOST echo "SSH OK" 2>/dev/null; then
-        echo "✅ SSH connection successful"
-    else
-        echo "❌ SSH connection failed. Please ensure:"
-        echo "   1. SSH key is set up"
-        echo "   2. Host is reachable"
-        echo "   3. Username is correct"
-        exit 1
-    fi
+    # Skip SSH key check for password-based authentication
+    echo "🔐 Using password-based SSH authentication"
+    echo "💡 You'll be prompted for your password during file transfers"
     
     echo ""
     upload_files
