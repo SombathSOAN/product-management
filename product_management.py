@@ -14,6 +14,10 @@ import os
 from dotenv import load_dotenv
 import databases
 import sqlalchemy
+
+# OPTIMIZATION 1: Limit OpenBLAS threads to prevent thread explosion
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'  # Also limit Intel MKL if present
 from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Table, MetaData, or_, func, and_, ForeignKey
 # from sqlalchemy.dialects.postgresql import ARRAY
 import re
@@ -44,10 +48,22 @@ DATABASE_URL = os.getenv("DATABASE_URL",
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Database connection
+# OPTIMIZATION 2: Configure database connection with proper pool limits
 metadata = MetaData()
-database = databases.Database(DATABASE_URL)
-engine = sqlalchemy.create_engine(DATABASE_URL)
+database = databases.Database(
+    DATABASE_URL,
+    min_size=1,      # Minimum connections in pool
+    max_size=5,      # Maximum connections in pool
+    max_queries=50,  # Maximum queries per connection
+    max_inactive_connection_lifetime=300  # 5 minutes
+)
+engine = sqlalchemy.create_engine(
+    DATABASE_URL,
+    pool_size=5,           # Connection pool size
+    max_overflow=10,       # Additional connections beyond pool_size
+    pool_pre_ping=True,    # Validate connections before use
+    pool_recycle=3600      # Recycle connections every hour
+)
 
 # Product Table
 data_table = Table(

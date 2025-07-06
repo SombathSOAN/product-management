@@ -26,6 +26,7 @@ typing-inspection==0.4.1
 typing_extensions==4.14.0
 tzdata==2025.2
 uvicorn==0.34.3
+gunicorn==21.2.0
 
 Pillow==11.2.1
 imagehash==4.3.1
