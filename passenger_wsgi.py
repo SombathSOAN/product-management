@@ -12,12 +12,9 @@ sys.path.insert(0, str(project_dir))
 os.environ.setdefault('ENVIRONMENT', 'production')
 os.environ.setdefault('DEBUG', 'false')
 
-# Database URL setup (MySQL async via aiomysql)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "mysql+aiomysql://aeconlin_pm:admindahfh%40pm2025%21%21@localhost:3306/aeconlin_pmdb"
-)
-os.environ["DATABASE_URL"] = DATABASE_URL
+# Database URL setup (you can update it later if needed)
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./product_management.db')
+os.environ['DATABASE_URL'] = DATABASE_URL
 
 # Thread optimization
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
