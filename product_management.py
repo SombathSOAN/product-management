@@ -804,13 +804,17 @@ async def get_product(product_id: str):
     return Product(**dict(row))
 
 # API: Update Product
+# ##Version 2 (Update product but doesn't change ID)
 @app.put("/products/{product_id}", response_model=Product)
 async def update_product(product_id: str, updated: Product):
     query = data_table.select().where(data_table.c.id == product_id)
     row = await database.fetch_one(query)
     if row is None:
         raise HTTPException(status_code=404, detail="Product not found.")
+
     updated_dict = updated.dict()
+    updated_dict.pop("id", None)  # ✅ prevents accidental ID overwrite
+
     if not updated_dict.get("meta_name"):
         updated_dict["meta_name"] = f"Buy {updated_dict['name']} Online"
     if not updated_dict.get("meta_description"):
@@ -818,13 +822,38 @@ async def update_product(product_id: str, updated: Product):
             "meta_description"] = f"Order {updated_dict['name']} now for just ${updated_dict['price']:.2f}. Fast delivery."
     if not updated_dict.get("meta_image"):
         updated_dict["meta_image"] = str(updated_dict["thumbnail_url"])
+
     updated_dict["updated_at"] = to_naive(datetime.now(timezone.utc))
-    updated_dict["created_at"] = to_naive(to_aware(row["created_at"]))
+    updated_dict["created_at"] = to_naive(to_aware(row["created_at"]))  # preserve original
     updated_dict["thumbnail_url"] = str(updated_dict["thumbnail_url"])
     updated_dict["gallery_urls"] = [str(url) for url in updated_dict["gallery_urls"]]
+
     update_query = data_table.update().where(data_table.c.id == product_id).values(**updated_dict)
     await database.execute(update_query)
     return updated
+
+# ##version 1 (Update product id when user update product)
+# @app.put("/products/{product_id}", response_model=Product)
+# async def update_product(product_id: str, updated: Product):
+#     query = data_table.select().where(data_table.c.id == product_id)
+#     row = await database.fetch_one(query)
+#     if row is None:
+#         raise HTTPException(status_code=404, detail="Product not found.")
+#     updated_dict = updated.dict()
+#     if not updated_dict.get("meta_name"):
+#         updated_dict["meta_name"] = f"Buy {updated_dict['name']} Online"
+#     if not updated_dict.get("meta_description"):
+#         updated_dict[
+#             "meta_description"] = f"Order {updated_dict['name']} now for just ${updated_dict['price']:.2f}. Fast delivery."
+#     if not updated_dict.get("meta_image"):
+#         updated_dict["meta_image"] = str(updated_dict["thumbnail_url"])
+#     updated_dict["updated_at"] = to_naive(datetime.now(timezone.utc))
+#     updated_dict["created_at"] = to_naive(to_aware(row["created_at"]))
+#     updated_dict["thumbnail_url"] = str(updated_dict["thumbnail_url"])
+#     updated_dict["gallery_urls"] = [str(url) for url in updated_dict["gallery_urls"]]
+#     update_query = data_table.update().where(data_table.c.id == product_id).values(**updated_dict)
+#     await database.execute(update_query)
+#     return updated
 
 # API: Delete Product
 @app.delete("/products/{product_id}")
